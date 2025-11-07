@@ -2,101 +2,120 @@ import streamlit as st
 import pandas as pd
 from io import BytesIO
 
+# -------------------------------
+# Konfigurasi halaman
+# -------------------------------
 st.set_page_config(page_title="Inventaris Sekolah", layout="wide")
 
-st.title("📘 Aplikasi Inventaris Sekolah")
-st.caption("By: Tulus Budiono | SMK KY Ageng Giri")
+# -------------------------------
+# Inisialisasi DataFrame
+# -------------------------------
+if "data" not in st.session_state:
+    st.session_state.data = pd.DataFrame(columns=[
+        "Nama Barang", "Jumlah", "Kondisi", "Ruang", "Keterangan"
+    ])
 
-# ==============================================
-# Fungsi Simpan & Load Excel
-# ==============================================
-def simpan_excel(df, nama_file):
-    towrite = BytesIO()
-    df.to_excel(towrite, index=False, sheet_name="DataInventaris")
-    towrite.seek(0)
+# -------------------------------
+# Fungsi untuk simpan ke Excel
+# -------------------------------
+def simpan_ke_excel(df):
+    output = BytesIO()
+    df.to_excel(output, index=False, sheet_name="Inventaris")
+    return output.getvalue()
+
+# -------------------------------
+# Tampilan Input Data
+# -------------------------------
+st.title("📦 Aplikasi Inventaris Sekolah")
+st.write("Gunakan aplikasi ini untuk mencatat, mengedit, dan mengelola inventaris per ruang secara langsung, termasuk dari HP.")
+
+with st.expander("➕ Tambah Data Baru", expanded=False):
+    with st.form("form_tambah"):
+        col1, col2, col3 = st.columns(3)
+        nama = col1.text_input("Nama Barang")
+        jumlah = col2.number_input("Jumlah", min_value=1, value=1)
+        kondisi = col3.selectbox("Kondisi", ["Baik", "Rusak Ringan", "Rusak Berat"])
+        ruang = st.selectbox("Ruang", ["Lab DKV", "Lab MPLB", "Lab Informatika", "Ruang Guru", "Perpustakaan", "Kelas"])
+        keterangan = st.text_area("Keterangan (opsional)")
+        submitted = st.form_submit_button("Tambah Data")
+
+        if submitted:
+            new_row = pd.DataFrame({
+                "Nama Barang": [nama],
+                "Jumlah": [jumlah],
+                "Kondisi": [kondisi],
+                "Ruang": [ruang],
+                "Keterangan": [keterangan]
+            })
+            st.session_state.data = pd.concat([st.session_state.data, new_row], ignore_index=True)
+            st.success("✅ Data berhasil ditambahkan!")
+
+# -------------------------------
+# Tampilan Data
+# -------------------------------
+st.subheader("📋 Daftar Inventaris")
+
+if st.session_state.data.empty:
+    st.info("Belum ada data. Tambahkan data terlebih dahulu.")
+else:
+    df = st.session_state.data.copy()
+
+    # Pilihan ruang filter
+    ruang_pilih = st.selectbox("Filter berdasarkan ruang:", ["Semua"] + df["Ruang"].unique().tolist())
+
+    if ruang_pilih != "Semua":
+        df = df[df["Ruang"] == ruang_pilih]
+
+    # Tampilkan tabel data
+    st.dataframe(df, use_container_width=True)
+
+    # -------------------------------
+    # Fitur Edit Data
+    # -------------------------------
+    st.markdown("### ✏️ Edit Data")
+    index_pilih = st.number_input("Pilih nomor data yang ingin diedit (mulai dari 0):", min_value=0,
+                                  max_value=len(df) - 1, step=1)
+
+    if st.button("Tampilkan Data untuk Diedit"):
+        data_edit = df.iloc[index_pilih]
+
+        with st.form("form_edit"):
+            col1, col2, col3 = st.columns(3)
+            nama_edit = col1.text_input("Nama Barang", data_edit["Nama Barang"])
+            jumlah_edit = col2.number_input("Jumlah", min_value=1, value=int(data_edit["Jumlah"]))
+            kondisi_edit = col3.selectbox("Kondisi", ["Baik", "Rusak Ringan", "Rusak Berat"], index=["Baik", "Rusak Ringan", "Rusak Berat"].index(data_edit["Kondisi"]))
+            ruang_edit = st.selectbox("Ruang", ["Lab DKV", "Lab MPLB", "Lab Informatika", "Ruang Guru", "Perpustakaan", "Kelas"], index=["Lab DKV", "Lab MPLB", "Lab Informatika", "Ruang Guru", "Perpustakaan", "Kelas"].index(data_edit["Ruang"]))
+            keterangan_edit = st.text_area("Keterangan (opsional)", data_edit["Keterangan"])
+
+            update_btn = st.form_submit_button("💾 Simpan Perubahan")
+
+            if update_btn:
+                st.session_state.data.loc[index_pilih] = [nama_edit, jumlah_edit, kondisi_edit, ruang_edit, keterangan_edit]
+                st.success("✅ Data berhasil diperbarui!")
+
+    # -------------------------------
+    # Fitur Hapus Data
+    # -------------------------------
+    st.markdown("### 🗑️ Hapus Data")
+    hapus_index = st.number_input("Masukkan nomor data yang ingin dihapus:", min_value=0, max_value=len(df) - 1, step=1)
+    if st.button("Hapus Data"):
+        st.session_state.data = st.session_state.data.drop(hapus_index).reset_index(drop=True)
+        st.warning("❌ Data berhasil dihapus.")
+
+    # -------------------------------
+    # Tombol Download Excel
+    # -------------------------------
+    st.markdown("### 💾 Simpan Data ke Excel")
+    excel_data = simpan_ke_excel(st.session_state.data)
     st.download_button(
-        label="💾 Download Data Excel",
-        data=towrite,
-        file_name=f"{nama_file}.xlsx",
+        label="📥 Unduh Excel",
+        data=excel_data,
+        file_name="Inventaris_Sekolah.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
 
-def load_data():
-    try:
-        return pd.read_excel("inventaris_data.xlsx")
-    except FileNotFoundError:
-        return pd.DataFrame(columns=["Ruang", "Nama Barang", "Jumlah", "Kondisi", "Keterangan"])
-
-def save_data(df):
-    df.to_excel("inventaris_data.xlsx", index=False)
-
-# ==============================================
-# Muat Data
-# ==============================================
-df = load_data()
-
-# ==============================================
-# Input Data Baru
-# ==============================================
-st.sidebar.header("➕ Tambah / Edit Data Inventaris")
-
-ruang = st.sidebar.selectbox("Pilih Ruang", sorted(df["Ruang"].unique().tolist() + ["Baru"]), index=len(df["Ruang"].unique().tolist()))
-if ruang == "Baru":
-    ruang = st.sidebar.text_input("Masukkan Nama Ruang Baru")
-
-nama_barang = st.sidebar.text_input("Nama Barang")
-jumlah = st.sidebar.number_input("Jumlah", min_value=1, step=1)
-kondisi = st.sidebar.selectbox("Kondisi", ["Baik", "Rusak Ringan", "Rusak Berat"])
-keterangan = st.sidebar.text_input("Keterangan (Opsional)")
-
-if st.sidebar.button("💾 Simpan Data"):
-    if ruang and nama_barang:
-        new_data = pd.DataFrame([[ruang, nama_barang, jumlah, kondisi, keterangan]],
-                                columns=df.columns)
-        df = pd.concat([df, new_data], ignore_index=True)
-        save_data(df)
-        st.sidebar.success("✅ Data berhasil disimpan!")
-        st.experimental_rerun()
-    else:
-        st.sidebar.warning("⚠️ Lengkapi semua data dulu!")
-
-# ==============================================
-# Tabel Data & Edit Langsung
-# ==============================================
-st.subheader("📋 Data Inventaris Sekolah")
-
-if len(df) > 0:
-    # Tabel editable
-    edited_df = st.data_editor(
-        df,
-        num_rows="dynamic",
-        use_container_width=True,
-        key="editable_tabel",
-    )
-
-    # Tombol simpan perubahan
-    if st.button("💾 Simpan Perubahan"):
-        save_data(edited_df)
-        st.success("✅ Data berhasil diperbarui!")
-        st.experimental_rerun()
-
-    # Tombol download Excel
-    simpan_excel(edited_df, "Data_Inventaris_Sekolah")
-
-    # Hapus baris tertentu
-    with st.expander("🗑️ Hapus Data"):
-        index_hapus = st.number_input("Masukkan Nomor Baris yang Ingin Dihapus", min_value=0, max_value=len(df)-1, step=1)
-        if st.button("Hapus"):
-            df = df.drop(df.index[index_hapus])
-            save_data(df)
-            st.warning(f"❌ Data baris ke-{index_hapus} telah dihapus.")
-            st.experimental_rerun()
-
-else:
-    st.info("Belum ada data inventaris. Tambahkan data di sidebar.")
-
-# ==============================================
+# -------------------------------
 # Footer
-# ==============================================
+# -------------------------------
 st.markdown("---")
-st.caption("🧰 Dibuat dengan Streamlit | Versi 2025 | Dapat diakses via HP & Laptop")
+st.caption("👨‍💻 Dibuat oleh Tulus Budiono | Versi Revisi: Fitur Edit + Save Excel")
